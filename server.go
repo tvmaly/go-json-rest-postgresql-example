@@ -48,6 +48,7 @@ func main() {
 
 	err := handler.SetRoutes(
 		&rest.Route{"GET", "/api/v1/locations/:city", api.GetLocation},
+		&rest.Route{"GET", "/api/v1/locations/search/", api.SearchLocation},
 	)
 
 	if err != nil {
@@ -63,6 +64,46 @@ func (api *Api) GetLocation(w rest.ResponseWriter, r *rest.Request) {
 	locations := make([]Location, 0)
 
 	rows, err := api.DB.Query("SELECT country,city,zipcode,coalesce(state,county,' ') FROM version1.locations where city = $1", city)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for rows.Next() {
+
+		var country string
+		var city string
+		var zipcode string
+		var region string
+
+		if err := rows.Scan(&country, &city, &zipcode, &region); err != nil {
+			log.Fatal(err)
+		}
+		locations = append(locations, Location{Country: country, City: city, Zipcode: zipcode, Region: region})
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	w.WriteJson(&locations)
+
+}
+
+// curl -i http://127.0.0.1:8080/api/v1/locations/search/?q=Green
+func (api *Api) SearchLocation(w rest.ResponseWriter, r *rest.Request) {
+
+	query := r.URL.Query().Get("q")
+
+	if len(query) == 0 {
+		// return nothing if no ?q=
+		rest.NotFound(w, r)
+		return
+	}
+
+	locations := make([]Location, 0)
+
+	rows, err := api.DB.Query("SELECT country,city,zipcode,coalesce(state,county,' ') FROM version1.locations where country='United States' AND city LIKE  $1 || '%'", query)
 
 	if err != nil {
 		log.Fatal(err)
